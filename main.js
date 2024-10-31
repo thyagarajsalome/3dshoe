@@ -11,16 +11,22 @@ const camera = new THREE.PerspectiveCamera(
   0.01,
   1000
 );
-const canvas = document.getElementById("canvas");
+const canvas = document.querySelector("#canvas"); // Changed to querySelector
+if (!canvas) {
+  throw new Error("Canvas element not found");
+}
+
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.outputColorSpace = THREE.SRGBColorSpace; // Updated from outputEncoding
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 // Camera settings
 const cameraSettings = {
   exposure: 1.0,
-  shutterSpeed: 800 / 200,
+  shutterSpeed: 10, // Simplified from 800/100
   iso: 100,
   fStop: 5.6,
 };
@@ -33,7 +39,32 @@ function updateCameraExposure() {
   renderer.toneMappingExposure = exposureValue * cameraSettings.exposure;
 }
 
-updateCameraExposure();
+// Studio Lighting Setup
+function addStudioLighting() {
+  // Key Light (main light)
+  const keyLight = new THREE.DirectionalLight(0xffffff, 20);
+  keyLight.position.set(5, 5, 5);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.width = 2048;
+  keyLight.shadow.mapSize.height = 2048;
+  scene.add(keyLight);
+
+  // Fill Light (softer light from opposite side)
+  const fillLight = new THREE.DirectionalLight(0xffffff, 15);
+  fillLight.position.set(-5, 3, 0);
+  scene.add(fillLight);
+
+  // Back Light (rim light)
+  const backLight = new THREE.DirectionalLight(0xffffff, 10);
+  backLight.position.set(0, 5, -5);
+  scene.add(backLight);
+
+  // Ambient Light (general fill)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 5);
+  scene.add(ambientLight);
+
+  return { keyLight, fillLight, backLight, ambientLight };
+}
 
 // Background color
 function setBackgroundColor(r, g, b) {
@@ -42,7 +73,7 @@ function setBackgroundColor(r, g, b) {
 
 setBackgroundColor(30, 30, 30);
 
-// Lighting Setup
+// HDRI Lighting Setup with fallback
 function addHDRILighting() {
   const rgbeLoader = new RGBELoader();
   rgbeLoader.load(
@@ -50,105 +81,166 @@ function addHDRILighting() {
     function (texture) {
       texture.mapping = THREE.EquirectangularReflectionMapping;
       scene.environment = texture;
+    },
+    undefined,
+    function (error) {
+      console.warn(
+        "HDRI loading failed, falling back to studio lighting:",
+        error
+      );
+      addStudioLighting();
     }
   );
 }
 
-function addStudioLighting() {
-  const keyLight = new THREE.DirectionalLight(0xffffff, 15);
-  keyLight.position.set(5, 5, 5);
-  scene.add(keyLight);
-
-  const fillLight = new THREE.DirectionalLight(0xffffff, 10);
-  fillLight.position.set(-5, 5, 5);
-  scene.add(fillLight);
-
-  const backLight = new THREE.DirectionalLight(0xffffff, 7);
-  backLight.position.set(0, 5, -5);
-  scene.add(backLight);
-
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-  scene.add(ambientLight);
-}
-
+// Initialize lighting
+let studioLights = addStudioLighting();
 addHDRILighting();
-addStudioLighting();
 
 // Texture Loading
 const textureLoader = new THREE.TextureLoader();
-const loadTexture = (name) => textureLoader.load(`/textures/${name}.jpeg`);
-
-const textures = {
-  diffuse: loadTexture("diffuse"),
-  bump: loadTexture("bump"),
-  height: loadTexture("height"),
-  internal: loadTexture("internal"),
-  normal: loadTexture("normal"),
-  specular: loadTexture("specular"),
-  occlusion: loadTexture("occlusion"),
+const loadTexture = (name) => {
+  return new Promise((resolve, reject) => {
+    textureLoader.load(
+      `/textures/${name}.jpeg`,
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        resolve(texture);
+      },
+      undefined,
+      (error) => {
+        console.warn(`Texture ${name} failed to load:`, error);
+        resolve(null);
+      }
+    );
+  });
 };
 
-// Model Loading and Setup
-function loadModel() {
-  const gltfLoader = new GLTFLoader();
-  gltfLoader.load("./shoe.glb", function (gltf) {
-    const object = gltf.scene;
-    object.traverse((child) => {
-      if (child.isMesh) {
-        applyTextures(child);
-      }
-    });
-    scene.add(object);
-    centerAndFitObject(object);
-  });
+async function loadTextures() {
+  const textureNames = [
+    "diffuse",
+    "bump",
+    "height",
+    // "internal",
+    // "normal",
+    // "specular",
+    "occlusion",
+  ];
+
+  try {
+    const loadedTextures = {};
+    await Promise.all(
+      textureNames.map(async (name) => {
+        const texture = await loadTexture(name);
+        if (texture) {
+          loadedTextures[name] = texture;
+        }
+      })
+    );
+    return loadedTextures;
+  } catch (error) {
+    console.error("Error loading textures:", error);
+    return {};
+  }
 }
 
-function applyTextures(mesh) {
+function applyTextures(mesh, textures) {
+  if (Object.keys(textures).length === 0) {
+    mesh.material = new THREE.MeshStandardMaterial({
+      // color: 0x808080,
+      roughness: 0.5,
+      metalness: 0.1,
+      envMapIntensity: 0.5,
+    });
+    return;
+  }
+
   const newMaterial = new THREE.MeshStandardMaterial({
-    map: textures.diffuse,
-    bumpMap: textures.bump,
-    normalMap: textures.normal,
-    aoMap: textures.internal,
-    aoMapIntensity: 0.1,
-    occlusionMap: textures.occlusion,
+    map: textures.diffuse || null,
+    bumpMap: textures.bump || null,
+    normalMap: textures.normal || null,
+    aoMap: textures.internal || null,
+    aoMapIntensity: 0.5,
+    occlusionMap: textures.occlusion || null,
+    roughnessMap: textures.specular || null,
     roughness: 0.5,
     metalness: 0.1,
     envMapIntensity: 1.0,
   });
 
   mesh.material = newMaterial;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
 
-  if (!mesh.geometry.attributes.uv2) {
+  if (!mesh.geometry.attributes.uv2 && mesh.geometry.attributes.uv) {
     mesh.geometry.setAttribute("uv2", mesh.geometry.attributes.uv);
   }
 }
 
+function loadModel() {
+  const gltfLoader = new GLTFLoader();
+  gltfLoader.load(
+    "/models/shoe.glb",
+    function (gltf) {
+      const object = gltf.scene;
+      loadTextures().then((textures) => {
+        object.traverse((child) => {
+          if (child.isMesh) {
+            applyTextures(child, textures);
+          }
+        });
+      });
+      scene.add(object);
+      centerAndFitObject(object);
+    },
+    undefined,
+    function (error) {
+      console.error("Error loading model:", error);
+    }
+  );
+}
+
 function centerAndFitObject(object) {
   const box = new THREE.Box3().setFromObject(object);
-  const boxCenter = box.getCenter(new THREE.Vector3());
-  const boxSize = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
 
-  object.position.sub(boxCenter);
+  object.position.sub(center);
 
-  const maxDimension = Math.max(boxSize.x, boxSize.y, boxSize.z);
-  const cameraDistance =
-    maxDimension / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 1.5);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = camera.fov * (Math.PI / 180);
+  const cameraDistance = (maxDim / 2 / Math.tan(fov / 2)) * 1.5;
 
   camera.position.set(0, 0, cameraDistance);
   camera.lookAt(0, 0, 0);
 
-  controls.target.set(0, 0, 0);
-  controls.update();
-}
+  // Update light positions based on object size
+  if (studioLights) {
+    const lightDistance = maxDim * 2;
+    studioLights.keyLight.position.set(
+      lightDistance,
+      lightDistance,
+      lightDistance
+    );
+    studioLights.fillLight.position.set(-lightDistance, lightDistance * 0.6, 0);
+    studioLights.backLight.position.set(0, lightDistance, -lightDistance);
 
-loadModel();
+    // Update shadow camera
+    studioLights.keyLight.shadow.camera.far = lightDistance * 4;
+    studioLights.keyLight.shadow.camera.left = -maxDim;
+    studioLights.keyLight.shadow.camera.right = maxDim;
+    studioLights.keyLight.shadow.camera.top = maxDim;
+    studioLights.keyLight.shadow.camera.bottom = -maxDim;
+    studioLights.keyLight.shadow.camera.updateProjectionMatrix();
+  }
+}
 
 // Controls Setup
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.minDistance = 0.1;
-controls.maxDistance = 5;
+controls.maxDistance = 10;
 
 // Animation Loop
 function animate() {
@@ -157,31 +249,49 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-animate();
-
 // Event Listeners
-window.addEventListener("resize", () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
+window.addEventListener("resize", onWindowResize, false);
+
+function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
 
-// UI Controls
-document.getElementById("exposureSlider").addEventListener("input", (e) => {
-  cameraSettings.exposure = parseFloat(e.target.value);
-  updateCameraExposure();
-});
+// UI Controls with null checks
+const setupUIControls = () => {
+  const exposureSlider = document.querySelector("#exposureSlider");
+  const metalnessSlider = document.querySelector("#metalnessSlider");
+  const bgColorPicker = document.querySelector("#bgColorPicker");
 
-document.getElementById("metalnessSlider").addEventListener("input", (e) => {
-  const metalness = parseFloat(e.target.value);
-  scene.traverse((child) => {
-    if (child.isMesh) {
-      child.material.metalness = metalness;
-    }
-  });
-});
+  if (exposureSlider) {
+    exposureSlider.addEventListener("input", (e) => {
+      cameraSettings.exposure = parseFloat(e.target.value);
+      updateCameraExposure();
+    });
+  }
 
-document.getElementById("bgColorPicker").addEventListener("input", (e) => {
-  const color = new THREE.Color(e.target.value);
-  setBackgroundColor(color.r * 255, color.g * 255, color.b * 255);
-});
+  if (metalnessSlider) {
+    metalnessSlider.addEventListener("input", (e) => {
+      const metalness = parseFloat(e.target.value);
+      scene.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.metalness = metalness;
+        }
+      });
+    });
+  }
+
+  if (bgColorPicker) {
+    bgColorPicker.addEventListener("input", (e) => {
+      const color = new THREE.Color(e.target.value);
+      setBackgroundColor(color.r * 255, color.g * 255, color.b * 255);
+    });
+  }
+};
+
+// Initialize
+updateCameraExposure();
+loadModel();
+setupUIControls();
+animate();
