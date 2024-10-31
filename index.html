@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Shoe Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-900 text-white">
+    <nav class="bg-gray-800 p-4 absolute w-full z-10">
+      <div class="container mx-auto flex justify-between items-center">
+        <a href="#" class="text-xl font-bold">3D Shoe Viewer</a>
+        <div class="space-x-4">
+          <a href="#" class="hover:text-gray-300">Home</a>
+          <a
+            href="https://frontend-3dartist.netlify.app/"
+            target="_blank"
+            class="hover:text-gray-300"
+            >About</a
+          >
+          <a
+            href="https://3dartist-portfolio.netlify.app/#home"
+            target="_blank"
+            class="hover:text-gray-300"
+            >Contact</a
+          >
+        </div>
+      </div>
+    </nav>
+
+    <main class="relative h-screen">
+      <canvas id="canvas"></canvas>
+      <div
+        class="absolute top-20 left-4 right-4 bg-gray-800 bg-opacity-80 p-4 rounded-lg"
+      >
+        <h1 class="text-2xl font-bold mb-2">Interactive 3D Shoe Model</h1>
+        <p class="text-gray-300">
+          All scene setup, lighting, programming, GUI, and frontend were
+          completed by TM. The 3D shoe model was downloaded from Sketchfab for
+          testing purposes and is subject to the following license.
+          <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank"
+            ><h3 style="color: darkorange">Read</h3></a
+          >
+        </p>
+      </div>
+      <div
+        class="absolute bottom-4 left-4 right-4 bg-gray-800 bg-opacity-80 p-4 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-4"
+      >
+        <div>
+          <h2 class="text-lg font-bold mb-2">Camera Settings</h2>
+          <label class="block">
+            Exposure
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value="1"
+              class="w-full"
+              id="exposureSlider"
+            />
+          </label>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold mb-2">Material Properties</h2>
+          <label class="block">
+            Metalness
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value="0.1"
+              class="w-full"
+              id="metalnessSlider"
+            />
+          </label>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold mb-2">Background Color</h2>
+          <input
+            type="color"
+            value="#1E1E1E"
+            class="w-full h-10"
+            id="bgColorPicker"
+          />
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
