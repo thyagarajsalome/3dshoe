@@ -11,8 +11,7 @@ const camera = new THREE.PerspectiveCamera(
   0.01,
   1000
 );
-
-const canvas = document.querySelector("#canvas");
+const canvas = document.querySelector("#canvas"); // Changed to querySelector
 if (!canvas) {
   throw new Error("Canvas element not found");
 }
@@ -20,14 +19,14 @@ if (!canvas) {
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.outputColorSpace = THREE.SRGBColorSpace; // Updated from outputEncoding
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 // Camera settings
 const cameraSettings = {
   exposure: 1.0,
-  shutterSpeed: 10,
+  shutterSpeed: 10, // Simplified from 800/100
   iso: 100,
   fStop: 5.6,
 };
@@ -41,7 +40,6 @@ function updateCameraExposure() {
 }
 
 // Studio Lighting Setup
-let studioLights;
 function addStudioLighting() {
   // Key Light (main light)
   const keyLight = new THREE.DirectionalLight(0xffffff, 20);
@@ -52,17 +50,17 @@ function addStudioLighting() {
   scene.add(keyLight);
 
   // Fill Light (softer light from opposite side)
-  const fillLight = new THREE.DirectionalLight(0xffffff, 10);
+  const fillLight = new THREE.DirectionalLight(0xffffff, 15);
   fillLight.position.set(-5, 3, 0);
   scene.add(fillLight);
 
   // Back Light (rim light)
-  const backLight = new THREE.DirectionalLight(0xffffff, 15);
+  const backLight = new THREE.DirectionalLight(0xffffff, 10);
   backLight.position.set(0, 5, -5);
   scene.add(backLight);
 
   // Ambient Light (general fill)
-  const ambientLight = new THREE.AmbientLight(0xffffff, 10);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 5);
   scene.add(ambientLight);
 
   return { keyLight, fillLight, backLight, ambientLight };
@@ -77,27 +75,27 @@ setBackgroundColor(30, 30, 30);
 
 // HDRI Lighting Setup with fallback
 function addHDRILighting() {
-  return new Promise((resolve, reject) => {
-    const rgbeLoader = new RGBELoader();
-    rgbeLoader.load(
-      // "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/zwartkops_pit_1k.hdr",
-      function (texture) {
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        scene.environment = texture;
-
-        resolve(texture);
-      },
-      undefined,
-      function (error) {
-        console.warn(
-          "HDRI loading failed, falling back to studio lighting:",
-          error
-        );
-        resolve(addStudioLighting());
-      }
-    );
-  });
+  const rgbeLoader = new RGBELoader();
+  rgbeLoader.load(
+    "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/zwartkops_pit_1k.hdr",
+    function (texture) {
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      scene.environment = texture;
+    },
+    undefined,
+    function (error) {
+      console.warn(
+        "HDRI loading failed, falling back to studio lighting:",
+        error
+      );
+      addStudioLighting();
+    }
+  );
 }
+
+// Initialize lighting
+let studioLights = addStudioLighting();
+addHDRILighting();
 
 // Texture Loading
 const textureLoader = new THREE.TextureLoader();
@@ -119,28 +117,37 @@ const loadTexture = (name) => {
 };
 
 async function loadTextures() {
-  const textureNames = ["diffuse", "bump", "height", "occlusion"];
+  const textureNames = [
+    "diffuse",
+    "bump",
+    "height",
+    // "internal",
+    // "normal",
+    // "specular",
+    "occlusion",
+  ];
 
-  const loadedTextures = {};
-  await Promise.all(
-    textureNames.map(async (name) => {
-      try {
+  try {
+    const loadedTextures = {};
+    await Promise.all(
+      textureNames.map(async (name) => {
         const texture = await loadTexture(name);
         if (texture) {
           loadedTextures[name] = texture;
         }
-      } catch (error) {
-        console.warn(`Failed to load texture ${name}:`, error);
-      }
-    })
-  );
-  return loadedTextures;
+      })
+    );
+    return loadedTextures;
+  } catch (error) {
+    console.error("Error loading textures:", error);
+    return {};
+  }
 }
 
 function applyTextures(mesh, textures) {
-  if (!textures || Object.keys(textures).length === 0) {
-    console.warn("No textures available, using default material");
+  if (Object.keys(textures).length === 0) {
     mesh.material = new THREE.MeshStandardMaterial({
+      // color: 0x808080,
       roughness: 0.5,
       metalness: 0.1,
       envMapIntensity: 0.5,
@@ -170,54 +177,27 @@ function applyTextures(mesh, textures) {
   }
 }
 
-function loadModelAsync() {
-  return new Promise((resolve, reject) => {
-    const gltfLoader = new GLTFLoader();
-    gltfLoader.load(
-      "/models/shoe.glb",
-      (gltf) => resolve(gltf.scene),
-      undefined,
-      reject
-    );
-  });
-}
-
-async function loadAndSetupModel() {
-  try {
-    // Show loading indicator
-    const loadingElement = document.getElementById("loading");
-    if (loadingElement) {
-      loadingElement.style.display = "block";
+function loadModel() {
+  const gltfLoader = new GLTFLoader();
+  gltfLoader.load(
+    "/models/shoe.glb",
+    function (gltf) {
+      const object = gltf.scene;
+      loadTextures().then((textures) => {
+        object.traverse((child) => {
+          if (child.isMesh) {
+            applyTextures(child, textures);
+          }
+        });
+      });
+      scene.add(object);
+      centerAndFitObject(object);
+    },
+    undefined,
+    function (error) {
+      console.error("Error loading model:", error);
     }
-
-    // Load everything concurrently
-    const [object, textures, environment] = await Promise.all([
-      loadModelAsync(),
-      loadTextures(),
-      addHDRILighting(),
-    ]);
-
-    // Apply textures to the model
-    object.traverse((child) => {
-      if (child.isMesh) {
-        applyTextures(child, textures);
-      }
-    });
-
-    // Add to scene only after everything is ready
-    scene.add(object);
-    centerAndFitObject(object);
-
-    // Hide loading indicator
-    if (loadingElement) {
-      loadingElement.style.display = "none";
-    }
-
-    return object;
-  } catch (error) {
-    console.error("Error loading model or textures:", error);
-    throw error;
-  }
+  );
 }
 
 function centerAndFitObject(object) {
@@ -311,16 +291,7 @@ const setupUIControls = () => {
 };
 
 // Initialize
-async function init() {
-  try {
-    updateCameraExposure();
-    await loadAndSetupModel();
-    setupUIControls();
-    animate();
-  } catch (error) {
-    console.error("Failed to initialize:", error);
-  }
-}
-
-// Start the application
-init();
+updateCameraExposure();
+loadModel();
+setupUIControls();
+animate();
