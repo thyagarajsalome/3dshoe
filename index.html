@@ -108,11 +108,11 @@
       </div>
       <!-- GUI settings -->
       <div
-        class="absolute bottom-4 left-4 right-4 bg-gray-800 bg-opacity-95 p-4 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-4"
+        class="absolute bottom-2 left-2 right-2 bg-gray-800 bg-opacity-50 p-2 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-2"
       >
         <div>
-          <h2 class="text-lg font-bold mb-2">Camera Settings</h2>
-          <label class="block">
+          <h2 class="text-base font-bold mb-1">Camera Settings</h2>
+          <label class="block text-sm">
             Exposure
             <input
               type="range"
@@ -120,14 +120,14 @@
               max="2"
               step="0.1"
               value="1"
-              class="w-full"
+              class="w-full h-6"
               id="exposureSlider"
             />
           </label>
         </div>
         <div>
-          <h2 class="text-lg font-bold mb-2">Material Properties</h2>
-          <label class="block">
+          <h2 class="text-base font-bold mb-1">Material Properties</h2>
+          <label class="block text-sm">
             Metalness
             <input
               type="range"
@@ -135,17 +135,17 @@
               max="1"
               step="0.1"
               value="0.1"
-              class="w-full"
+              class="w-full h-6"
               id="metalnessSlider"
             />
           </label>
         </div>
         <div>
-          <h2 class="text-lg font-bold mb-2">Background Color</h2>
+          <h2 class="text-base font-bold mb-1">Background Color</h2>
           <input
             type="color"
             value="#1E1E1E"
-            class="w-full h-10"
+            class="w-full h-8"
             id="bgColorPicker"
           />
         </div>
